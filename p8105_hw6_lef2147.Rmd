@@ -13,6 +13,8 @@ library(readr)
 library(modelr)
 ```
 
+## Question 1
+
 Load and Tidy Data
 * Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
 ```{r}
@@ -36,16 +38,19 @@ bw_data %>%
 ```
 
 
-
-
 Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
+* evaluate multicolinearity and remove variables that could be multicollinearity
+* build models and take out variables that have high standard deviation, insignificant p values, or have other factors in the model that can be explained by other variables in the model (e.g. mother's weight, age)
 ```{r}
+# fitting a model with every variable in the dataset
 fit = lm(bwt ~ ., data = bw_data)
 
-#car::vif(fit)
-# error given here indicates that there is extremely high collinearity going on, so we will fit a model with less variables and reassess multicollinearity 
+# car::vif(fit)
+```
+Error given here indicates that there is extreme high collinearity going on, so we will fit a model with less variables and reassess multicollinearity. We will remove variables that are repetitive
 
-# there are three variables that describe number of previous births (parity, pnumlbw, pnumsga) and four variables that explain mom's weight (ppbmi, ppwt, wtgain, delwt) we will choose only one/two variable in each category to keep and reassess multicollinearity
+There are three variables that describe number of previous births (parity, pnumlbw, pnumsga) and four variables that explain mom's weight (ppbmi, ppwt, wtgain, delwt) we will choose only one/two variable in each category to keep and reassess multicollinearity
+```{r}
 fit_1 = lm(bwt ~ babysex + frace + malform + bhead + blength + fincome + gaweeks + menarche + mheight + momage + parity + smoken + ppwt + wtgain, data = bw_data)
 
 car::vif(fit_1)
@@ -53,50 +58,50 @@ car::vif(fit_1)
 
 summary.lm(fit_1)
 
-summary(fit_1)$adj.r.squared
-
-# remove malform1 because the standard error is extremely high
+# remove malform because the standard error is extremely high and an insignificant p value
 fit_2 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + menarche + mheight + momage + parity + smoken + ppwt + wtgain, data = bw_data)
 
 summary.lm(fit_2)
 
-# remove momage
+# remove momage; insignificant p value
 fit_3 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + menarche + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
 
 summary.lm(fit_3)
 
-# remove menarche
+# remove menarche; insignificant p value
 fit_4 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
 
 summary.lm(fit_4)
 
-# remove fincome
-fit_5 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
+# remove fincome, frace; p value is marginally significant but we will remove this var (parsimony)
+fit_5 = lm(bwt ~ babysex + bhead + blength + gaweeks + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
 
 summary.lm(fit_5)
+
+# remove smoke and parity for parsimony while still keeping adjusted r squared high
+fit_6 = lm(bwt ~ babysex + bhead + blength + gaweeks + mheight + ppwt + wtgain, data = bw_data)
+
+summary.lm(fit_6)
 
 summary(fit_1)$adj.r.squared
 summary(fit_2)$adj.r.squared
 summary(fit_3)$adj.r.squared
 summary(fit_4)$adj.r.squared
 summary(fit_5)$adj.r.squared
+summary(fit_6)$adj.r.squared
+
 ```
+Model 5 has a large R squared adjusted value with the smallest number of variables in the model, while keeping everything significant.
+
 
 Using Model 5
 ```{r}
 
-modelr::add_residuals(bw_data, fit_5) %>% 
+modelr::add_residuals(bw_data, fit_6) %>% 
   ggplot(aes(bwt, resid)) + geom_violin()
-
-modelr::add_residuals(bw_data, fit_5) %>% 
-  ggplot(aes(bwt, resid)) + geom_point()
-
-fit_6 = lm(bwt ~ babysex + smoken + ppwt + wtgain + fincome + gaweeks + frace + mheight + blength + parity, data = bw_data)
 
 modelr::add_residuals(bw_data, fit_6) %>% 
   ggplot(aes(bwt, resid)) + geom_point()
-
-# fit 6 has a less pronounced curved pattern
 
 # modeling both predicted values against redsiduals
 modelr::add_predictions(bw_data, fit_6) %>% 
@@ -141,31 +146,101 @@ cv_results = cv_df %>%
   mutate(
     model_1 = map(.x = train, ~lm(bwt ~ blength + menarche, data = .x)),
     model_2 = map(.x = train, ~lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + babysex*blength, data = .x)),
-    fit_6 = map(train, ~lm(bwt ~ babysex + smoken + ppwt + wtgain + fincome + gaweeks + frace + mheight + blength + parity, data = bw_data)),
+    fit_6 = map(.x = train, ~lm(bwt ~ babysex + bhead + blength + gaweeks + mheight + ppwt + parity + smoken + wtgain, data = .x)),
     rmse_1 = map2(.x = model_1, .y = test, ~rmse(.x, .y)),
     rmse_2 = map2(.x = model_2, .y = test, ~rmse(.x, .y)),
-    rmse_3 = map2(fit_6, test, ~rmse(model = .x, data = .y))
+    rmse_3 = map2(.x = fit_6, .y = test, ~rmse(.x, .y)),
   )
 
 
-# cv_results %>% select(starts_with("rmse")) %>% 
-#   pivot_longer(
-#     everything(),
-#     names_to = "model", 
-#     values_to = "rmse",
-#     names_prefix = "rmse_") %>% 
-#   mutate(model = fct_inorder(model)) %>% 
-#   ggplot(aes(x = model, y = rmse)) + geom_violin()
+ cv_results %>% select(starts_with("rmse")) %>% 
+   pivot_longer(
+     everything(),
+     names_to = "model", 
+     values_to = "rmse",
+     names_prefix = "rmse_") %>% unnest() %>% 
+   mutate(model = fct_inorder(model)) %>% 
+   ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
-
-Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
-
+The RMSE for model 1 and model 2 have significant bimodalality going on. Model three has a lower RMSE but it has a more constant RMSE. Based on this, adjusted R squared values, and significance of the variables in the model, we can conclude that Model 3 is the best predictive model. 
 
 
+## Question 2
+For this problem, we’ll use the 2017 Central Park weather data that we’ve seen elsewhere. The code chunk below (adapted from the course website) will download these data.
 
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
 
+The boostrap is helpful when you’d like to perform inference for a parameter / value / summary that doesn’t have an easy-to-write-down distribution in the usual repeated sampling framework. We’ll focus on a simple linear regression with tmax as the response and tmin as the predictor, and are interested in the distribution of two quantities estimated from these data:
+* r̂2
+* log(β̂0∗β̂1)
 
+Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r̂2 and log(β̂0∗β̂1). Note: broom::glance() is helpful for extracting r̂2 from a fitted regression, and broom::tidy() (with some additional wrangling) should help in computing log(β̂0∗β̂1)
+```{r}
+
+# finding the rsqaured value 
+r_squared = weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) %>% 
+  select(.id, r.squared)
+  
+# find log(beta1 * beta0)
+betas = weather_df %>% 
+  modelr::bootstrap(n = 5000) %>% 
+  mutate(
+    models = map(strap, ~lm(tmax ~ tmin, data = .x)),
+    results = map(models, broom::tidy)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results) %>%
+  select(.id, term, estimate) %>% 
+  pivot_wider(
+    names_from = term,
+    values_from = estimate
+  ) %>% 
+  rename(
+    intercept = "(Intercept)"
+  ) %>% 
+  mutate(
+    log_beta = log10(intercept * tmin)
+  )
+
+# combind the two datasets together
+data = left_join(betas, r_squared, by = ".id")
+
+# compute 95% confidence intervals for r squared
+mean_r_sq = mean(pull(data, r.squared))
+sd_r_sq = sd(pull(data, r.squared))
+# lower bound 
+mean_r_sq - qnorm(0.975) * sd_r_sq*sqrt(5000)
+# upper bound 
+mean_r_sq + qnorm(0.975) * sd_r_sq*sqrt(5000)
+
+# compute 95% confidence intervals for log(beta1 * beta0)
+mean_beta = mean(pull(data, log_beta))
+sd_beta = sd(pull(data, log_beta))
+# lower bound 
+mean_beta - qnorm(0.975) * sd_beta*sqrt(5000)
+# upper bound 
+mean_beta + qnorm(0.975) * sd_beta*sqrt(5000)
+
+```
+The 95% confidence interval for r squared value is (-0.239, 2.062) and the 95% confidence interval for log(beta1*beta0) is (-0.583, 2.332). 
 
 
 
