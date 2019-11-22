@@ -1,0 +1,174 @@
+---
+title: "homework 6"
+author: "lauren franks, lef2147"
+date: "11/20/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(readr)
+library(modelr)
+```
+
+Load and Tidy Data
+* Load and clean the data for regression analysis (i.e. convert numeric to factor where appropriate, check for missing data, etc.).
+```{r}
+bw_data = read_csv("birthweight.csv") %>% 
+  janitor::clean_names() %>% 
+  mutate(
+    babysex = as.factor(babysex),
+    frace = as.factor(frace),
+    malform = as.factor(malform),
+    mrace = as.factor(mrace)
+  )
+  
+skimr::skim(bw_data)
+```
+
+Visualizing Birthweight
+  - slight left skew
+```{r}
+bw_data %>% 
+  ggplot(aes(bwt)) + geom_histogram()
+```
+
+
+
+
+Propose a regression model for birthweight. This model may be based on a hypothesized structure for the factors that underly birthweight, on a data-driven model-building process, or a combination of the two. Describe your modeling process and show a plot of model residuals against fitted values – use add_predictions and add_residuals in making this plot.
+```{r}
+fit = lm(bwt ~ ., data = bw_data)
+
+#car::vif(fit)
+# error given here indicates that there is extremely high collinearity going on, so we will fit a model with less variables and reassess multicollinearity 
+
+# there are three variables that describe number of previous births (parity, pnumlbw, pnumsga) and four variables that explain mom's weight (ppbmi, ppwt, wtgain, delwt) we will choose only one/two variable in each category to keep and reassess multicollinearity
+fit_1 = lm(bwt ~ babysex + frace + malform + bhead + blength + fincome + gaweeks + menarche + mheight + momage + parity + smoken + ppwt + wtgain, data = bw_data)
+
+car::vif(fit_1)
+# there is no multicollinearity present, we can now evaluate the model 
+
+summary.lm(fit_1)
+
+summary(fit_1)$adj.r.squared
+
+# remove malform1 because the standard error is extremely high
+fit_2 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + menarche + mheight + momage + parity + smoken + ppwt + wtgain, data = bw_data)
+
+summary.lm(fit_2)
+
+# remove momage
+fit_3 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + menarche + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
+
+summary.lm(fit_3)
+
+# remove menarche
+fit_4 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
+
+summary.lm(fit_4)
+
+# remove fincome
+fit_5 = lm(bwt ~ babysex + frace + bhead + blength + fincome + gaweeks + mheight + parity + smoken + ppwt + wtgain, data = bw_data)
+
+summary.lm(fit_5)
+
+summary(fit_1)$adj.r.squared
+summary(fit_2)$adj.r.squared
+summary(fit_3)$adj.r.squared
+summary(fit_4)$adj.r.squared
+summary(fit_5)$adj.r.squared
+```
+
+Using Model 5
+```{r}
+
+modelr::add_residuals(bw_data, fit_5) %>% 
+  ggplot(aes(bwt, resid)) + geom_violin()
+
+modelr::add_residuals(bw_data, fit_5) %>% 
+  ggplot(aes(bwt, resid)) + geom_point()
+
+fit_6 = lm(bwt ~ babysex + smoken + ppwt + wtgain + fincome + gaweeks + frace + mheight + blength + parity, data = bw_data)
+
+modelr::add_residuals(bw_data, fit_6) %>% 
+  ggplot(aes(bwt, resid)) + geom_point()
+
+# fit 6 has a less pronounced curved pattern
+
+# modeling both predicted values against redsiduals
+modelr::add_predictions(bw_data, fit_6) %>% 
+  mutate(
+    resid = pred - bwt
+  ) %>% 
+  ggplot(aes(pred, resid)) + geom_point()
+
+# aside from a few outliers, the residuals are evenly scattered about 0
+```
+
+
+Comparing model to two other models:
+* One using length at birth and gestational age as predictors (main effects only)
+* One using head circumference, length, sex, and all interactions (including the three-way interaction) between these
+```{r}
+model_1 = lm(bwt ~ blength + menarche, data = bw_data)
+
+summary.lm(model_1)
+
+model_2 = lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + babysex*blength, data = bw_data)
+
+summary.lm(model_2)
+```
+
+
+Make this comparison in terms of the cross-validated prediction error; use crossv_mc and functions in purrr as appropriate.
+```{r}
+train = sample_frac(bw_data, size = 0.8)
+test = anti_join(bw_data, train)
+
+cv_df = crossv_mc(bw_data, 100)
+
+cv_df =
+  cv_df %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble)
+  )
+
+cv_results = cv_df %>% 
+  mutate(
+    model_1 = map(.x = train, ~lm(bwt ~ blength + menarche, data = .x)),
+    model_2 = map(.x = train, ~lm(bwt ~ bhead + blength + babysex + bhead*blength + bhead*babysex + babysex*blength, data = .x)),
+    fit_6 = map(train, ~lm(bwt ~ babysex + smoken + ppwt + wtgain + fincome + gaweeks + frace + mheight + blength + parity, data = bw_data)),
+    rmse_1 = map2(.x = model_1, .y = test, ~rmse(.x, .y)),
+    rmse_2 = map2(.x = model_2, .y = test, ~rmse(.x, .y)),
+    rmse_3 = map2(fit_6, test, ~rmse(model = .x, data = .y))
+  )
+
+
+# cv_results %>% select(starts_with("rmse")) %>% 
+#   pivot_longer(
+#     everything(),
+#     names_to = "model", 
+#     values_to = "rmse",
+#     names_prefix = "rmse_") %>% 
+#   mutate(model = fct_inorder(model)) %>% 
+#   ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+
+Note that although we expect your model to be reasonable, model building itself is not a main idea of the course and we don’t necessarily expect your model to be “optimal”.
+
+
+
+
+
+
+
+
+
+
+
+
