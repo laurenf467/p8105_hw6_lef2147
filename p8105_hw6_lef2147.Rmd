@@ -2,7 +2,7 @@
 title: "homework 6"
 author: "lauren franks, lef2147"
 date: "11/20/2019"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -29,6 +29,8 @@ bw_data = read_csv("birthweight.csv") %>%
   
 skimr::skim(bw_data)
 ```
+There is no missing data in this dataset.
+
 
 Visualizing Birthweight
   - slight left skew
@@ -163,7 +165,7 @@ cv_results = cv_df %>%
    ggplot(aes(x = model, y = rmse)) + geom_violin()
 ```
 
-The RMSE for model 1 and model 2 have significant bimodalality going on. Model three has a lower RMSE but it has a more constant RMSE. Based on this, adjusted R squared values, and significance of the variables in the model, we can conclude that Model 3 is the best predictive model. 
+The RMSE for model 1 and model 2 have significant bimodalality going on. Model three has a lower RMSE but it is constant with no peaks present. Based on this, adjusted R squared values, and significance of the variables in the model, we can conclude that Model 3 is the best predictive model. 
 
 
 ## Question 2
@@ -188,6 +190,7 @@ The boostrap is helpful when you’d like to perform inference for a parameter /
 * log(β̂0∗β̂1)
 
 Use 5000 bootstrap samples and, for each bootstrap sample, produce estimates of these two quantities. Plot the distribution of your estimates, and describe these in words. Using the 5000 bootstrap estimates, identify the 2.5% and 97.5% quantiles to provide a 95% confidence interval for r̂2 and log(β̂0∗β̂1). Note: broom::glance() is helpful for extracting r̂2 from a fitted regression, and broom::tidy() (with some additional wrangling) should help in computing log(β̂0∗β̂1)
+
 ```{r}
 
 # finding the rsqaured value 
@@ -239,8 +242,15 @@ mean_beta - qnorm(0.975) * sd_beta*sqrt(5000)
 # upper bound 
 mean_beta + qnorm(0.975) * sd_beta*sqrt(5000)
 
+
+# plot distributions - histogram
+data %>% ggplot(aes(log_beta)) + 
+  geom_histogram()
+
+data %>% ggplot(aes(r.squared)) + 
+  geom_histogram()
 ```
-The 95% confidence interval for r squared value is (-0.239, 2.062) and the 95% confidence interval for log(beta1*beta0) is (-0.583, 2.332). 
+The 95% confidence interval for r squared value is (-0.239, 2.062) and the 95% confidence interval for log(beta1*beta0) is (-0.583, 2.332). The distributions for both r squared and log_beta are normal, with r squared ranging from `r min(pull(data, r.squared))` to `max(pull(data, r.squared))` with a mean of `r mean(pull(data, r.squared))` and log_beta ranging from `min(pull(data, log_beta))` to `max(pull(data, log_beta))` with a mean of `r mean(pull(data, log_beta))`. 
 
 
 
